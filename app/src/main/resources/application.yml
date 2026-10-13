@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: tramsac
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/tramsac}
+    username: ${DB_USER:tramsac}
+    password: ${DB_PASSWORD:tramsac}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

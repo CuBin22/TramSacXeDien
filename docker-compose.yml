@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME:-tramsac}
+      POSTGRES_USER: ${DB_USER:-tramsac}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-tramsac}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-tramsac}
+      DB_USER: ${DB_USER:-tramsac}
+      DB_PASSWORD: ${DB_PASSWORD:-tramsac}
+      JWT_SECRET: ${JWT_SECRET:?can dat JWT_SECRET trong .env}
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

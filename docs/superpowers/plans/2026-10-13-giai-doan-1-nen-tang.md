@@ -40,7 +40,7 @@
 
 **Files:**
 - Create: `pom.xml`, `app/pom.xml`, `app/Dockerfile`, `docker-compose.yml`, `.env.example`, `.gitignore`
-- Create: `app/src/main/java/com/tramsac/TramSacApplication.java`
+- Create: `app/src/main/java/com/tramsac/TramSacApplication.java`, `app/src/main/java/com/tramsac/common/security/SecurityConfig.java` (tối thiểu: `/actuator/health` và `/api/auth/**` công khai, còn lại cần xác thực, stateless, tắt CSRF; nếu thiếu thì `HealthIT` nhận 401)
 - Create: `app/src/main/resources/application.yml`
 - Test: `app/src/test/java/com/tramsac/AbstractIntegrationTest.java`, `app/src/test/java/com/tramsac/HealthIT.java`
 
@@ -49,7 +49,7 @@
 
 - [ ] **Step 1: Viết test lỗi** `HealthIT.healthEndpoint_returnsUp`: `mvc.perform(get("/actuator/health"))` mong đợi status 200 và `$.status` = `UP`.
 - [ ] **Step 2: Chạy** `mvn -pl app test -Dtest=HealthIT` → FAIL (chưa có ứng dụng).
-- [ ] **Step 3: Tạo khung:** `git init`; POM cha (Java 21, quản lý phiên bản Spring Boot) và `app/pom.xml` (starter web, data-jpa, validation, security, actuator, flyway-core + flyway-database-postgresql, postgresql, jjwt, test, testcontainers postgresql + junit-jupiter). `application.yml`: datasource đọc `DB_URL`, `DB_USER`, `DB_PASSWORD`; `spring.jpa.hibernate.ddl-auto=validate`; naming strategy theo Global Constraints; `management.endpoints.web.exposure.include=health`. `Dockerfile` nhiều tầng (build Maven → chạy JRE 21). `docker-compose.yml`: dịch vụ `postgres` (postgres:16, healthcheck `pg_isready`) và `app` (phụ thuộc `postgres` khỏe, biến môi trường từ `.env`, cổng 8080). `.env.example` liệt kê `DB_URL`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`.
+- [ ] **Step 3: Tạo khung:** `git init`; POM cha (Java 21, quản lý phiên bản Spring Boot) và `app/pom.xml` (starter web, data-jpa, validation, security, actuator, flyway-core + flyway-database-postgresql, postgresql, jjwt, test, testcontainers postgresql + junit-jupiter). `application.yml`: datasource đọc `DB_URL`, `DB_USER`, `DB_PASSWORD`; `spring.jpa.hibernate.ddl-auto=validate`; naming strategy theo Global Constraints; `management.endpoints.web.exposure.include=health`. `Dockerfile` nhiều tầng (build Maven → chạy JRE 21). `docker-compose.yml`: dịch vụ `postgres` (postgres:16, healthcheck `pg_isready`) và `app` (phụ thuộc `postgres` khỏe, biến môi trường từ `.env`, cổng 8080). `.env.example` liệt kê `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (compose tự ghép `DB_URL` trỏ tới host `postgres`).
 - [ ] **Step 4: Chạy** lại `HealthIT` → PASS; chạy `docker compose up -d --build` và `curl localhost:8080/actuator/health` trả `{"status":"UP"}`; `docker compose down`.
 - [ ] **Step 5: Commit** `git add . && git commit -m "chore: khung du an Spring Boot va Docker Compose"`
 
@@ -104,7 +104,7 @@
 **Files:**
 - Create: `app/src/main/java/com/tramsac/nguoidung/NguoiDung.java`, `Xe.java`, `VaiTro.java`, `NguoiDungRepository.java`, `XeRepository.java`
 - Create: `app/src/main/java/com/tramsac/nguoidung/dto/DangKyRequest.java`, `app/src/main/java/com/tramsac/nguoidung/AuthController.java`, `DangKyService.java`
-- Create: `app/src/main/java/com/tramsac/common/security/SecurityConfig.java` (bản tối thiểu: bean `PasswordEncoder` BCrypt, `/api/auth/**` và `/actuator/health` công khai)
+- Modify: `app/src/main/java/com/tramsac/common/security/SecurityConfig.java` (đã có từ Task 1; thêm bean `PasswordEncoder` BCrypt)
 - Test: `app/src/test/java/com/tramsac/nguoidung/DangKyIT.java`
 
 **Interfaces:**
@@ -124,7 +124,7 @@
   - `dangKy_duplicatePlate_returns409` (khác email, cùng biển số).
   - `dangKy_concurrentSameEmail_oneCreatedOtherConflict`: hai luồng cùng lúc → đúng một 201 và một 409, không có 500.
 - [ ] **Step 2: Chạy** `DangKyIT` → FAIL.
-- [ ] **Step 3: Cài đặt** `DangKyService.dangKy(DangKyRequest): String` trong một giao dịch: chuẩn hóa → kiểm tra trùng email/số điện thoại/biển số (trả `ApiException` 409) → lưu `NguoiDung` và `Xe` → `AuditService.ghi`. Trùng đồng thời dựa vào UNIQUE của DB: `GlobalExceptionHandler` đã đổi `DataIntegrityViolationException` thành 409. `BCryptPasswordEncoder` khai báo là bean trong `SecurityConfig` tạm thời (Task 5 hoàn thiện cấu hình); tạm cho `/api/auth/**` công khai.
+- [ ] **Step 3: Cài đặt** `DangKyService.dangKy(DangKyRequest): String` trong một giao dịch: chuẩn hóa → kiểm tra trùng email/số điện thoại/biển số (trả `ApiException` 409) → lưu `NguoiDung` và `Xe` → `AuditService.ghi`. Trùng đồng thời dựa vào UNIQUE của DB: `GlobalExceptionHandler` đã đổi `DataIntegrityViolationException` thành 409. `BCryptPasswordEncoder` khai báo là bean trong `SecurityConfig` (đã công khai `/api/auth/**` từ Task 1).
 - [ ] **Step 4: Chạy** `DangKyIT` → PASS.
 - [ ] **Step 5: Commit** `git commit -am "feat(UC01): dang ky tai khoan"`
 
@@ -145,7 +145,7 @@
   - `POST /api/auth/dang-nhap` body `DangNhapRequest(String dinhDanh, String matKhau)` (`dinhDanh` là email hoặc số điện thoại) → 200 `DangNhapResponse(String token, String maND, String vaiTro)`. Sai thông tin → 401 `ma="SAI_THONG_TIN"` và tăng `SoLanSaiLienTiep`; sai lần thứ 5 thì đặt `KhoaDenLuc = now + 15 phút`. Đang khóa → 423 `ma="TAM_KHOA"` kèm `conLaiGiay`, **kể cả khi mật khẩu đúng**. Hết khóa mà đúng mật khẩu → vào được, `SoLanSaiLienTiep=0`, `KhoaDenLuc=NULL`.
   - `class JwtService { String taoToken(String maND); Optional<String> docMaND(String token); }` — token hết hạn sau 30 phút, ký HS256 bằng `JWT_SECRET`; token sai chữ ký hoặc hết hạn → `Optional.empty()`.
   - `JwtAuthFilter`: đọc `Authorization: Bearer`, nạp `NguoiDung` từ DB **ở mọi yêu cầu** (vai trò lấy từ DB, không lấy từ token), cấp quyền `ROLE_QUAN_TRI` / `ROLE_KY_THUAT_VIEN` / `ROLE_NHAN_VIEN_TRUC` / `ROLE_NGUOI_DUNG`; sau mỗi yêu cầu hợp lệ trả header `X-New-Token` (token mới hạn 30 phút) để phiên trượt theo hoạt động.
-  - `SecurityConfig` (mở rộng bản của Task 4): `@EnableMethodSecurity`; công khai `/api/auth/**` và `/actuator/health`; còn lại cần xác thực; lỗi quyền trả 403 và chưa xác thực trả 401 dạng `ApiError`.
+  - `SecurityConfig` (mở rộng bản của Task 1): `@EnableMethodSecurity`; công khai `/api/auth/**` và `/actuator/health`; còn lại cần xác thực; lỗi quyền trả 403 và chưa xác thực trả 401 dạng `ApiError`.
   - `NguoiDungHienTai` (lớp tiện ích, phương thức tĩnh) `static String layMaND()` và `static VaiTro layVaiTro()` đọc từ `SecurityContext`.
 
 - [ ] **Step 1: Viết test lỗi:**

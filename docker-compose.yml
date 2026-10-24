@@ -1,10 +1,54 @@
 services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.68.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:${JAEGER_HOST_PORT:-16686}:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.123.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      - jaeger
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${WEB_HOST_PORT:-3000}:80"
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    command: ["/bin/sh", "-c", "if [ -f /mosquitto/data/passwd ]; then mosquitto_passwd -b /mosquitto/data/passwd \"$${MQTT_USER}\" \"$${MQTT_PASSWORD}\" ; else mosquitto_passwd -b -c /mosquitto/data/passwd \"$${MQTT_USER}\" \"$${MQTT_PASSWORD}\"; fi && chown mosquitto:mosquitto /mosquitto/data/passwd && chmod 600 /mosquitto/data/passwd && exec mosquitto -c /mosquitto/config/mosquitto.conf"]
+    environment:
+      MQTT_USER: ${MQTT_USER:-tramsac}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-tramsac-dev}
+    ports:
+      - "127.0.0.1:${MQTT_HOST_PORT:-1883}:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -u \"$${MQTT_USER}\" -P \"$${MQTT_PASSWORD}\" -t 'healthcheck' -E -W 3"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+
   postgres:
     image: postgres:16
     environment:
       POSTGRES_DB: ${DB_NAME:-tramsac}
       POSTGRES_USER: ${DB_USER:-tramsac}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-tramsac}
+    ports:
+      - "${DB_HOST_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,13 +64,74 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      payment-sim:
+        condition: service_started
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-tramsac}
+      OTEL_SERVICE_NAME: tramsac-app
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_SAMPLER: parentbased_always_on
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
       DB_USER: ${DB_USER:-tramsac}
       DB_PASSWORD: ${DB_PASSWORD:-tramsac}
       JWT_SECRET: ${JWT_SECRET:?can dat JWT_SECRET trong .env}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MQTT_URI: tcp://mosquitto:1883
+      MQTT_USER: ${MQTT_USER:-tramsac}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-tramsac-dev}
+      PAYMENT_SIM_URL: http://payment-sim:8091
+      PAYMENT_SIM_API_TOKEN: ${PAYMENT_SIM_API_TOKEN:?can dat PAYMENT_SIM_API_TOKEN trong .env}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?can dat PAYMENT_WEBHOOK_SECRET trong .env}
     ports:
-      - "8080:8080"
+      - "${APP_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "3", "http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+
+  device-sim:
+    build:
+      context: .
+      dockerfile: device-sim/Dockerfile
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      OTEL_SERVICE_NAME: tramsac-device-sim
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      MQTT_URI: tcp://mosquitto:1883
+      MQTT_USER: ${MQTT_USER:-tramsac}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-tramsac-dev}
+      DEVICE_IDS: C-AC-01,C-AC-02,C-DC-01,C-DC-02
+    ports:
+      - "127.0.0.1:${DEVICE_SIM_HOST_PORT:-8090}:8090"
+    profiles: ["dev"]
+
+  payment-sim:
+    build:
+      context: .
+      dockerfile: payment-sim/Dockerfile
+    environment:
+      OTEL_SERVICE_NAME: tramsac-payment-sim
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      PAYMENT_SIM_API_TOKEN: ${PAYMENT_SIM_API_TOKEN:?can dat PAYMENT_SIM_API_TOKEN trong .env}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?can dat PAYMENT_WEBHOOK_SECRET trong .env}
+      PAYMENT_WEBHOOK_URL: http://app:8080/api/webhook/thanh-toan
+    ports:
+      - "127.0.0.1:${PAYMENT_SIM_HOST_PORT:-8091}:8091"
 
 volumes:
   pgdata:
+  mosquitto-data:

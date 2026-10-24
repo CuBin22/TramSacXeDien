@@ -20,3 +20,23 @@ management:
   endpoint:
     health:
       show-details: never
+
+tramsac:
+  jwt:
+    # Bắt buộc, tối thiểu 32 ký tự; đọc từ biến môi trường JWT_SECRET (xem .env.example)
+    secret: ${JWT_SECRET:}
+  mqtt:
+    enabled: ${MQTT_ENABLED:true}
+    uri: ${MQTT_URI:tcp://localhost:1883}
+    username: ${MQTT_USER:tramsac}
+    password: ${MQTT_PASSWORD:tramsac-dev}
+    client-id: ${MQTT_CLIENT_ID:tramsac-app}
+    safety-timeout: ${MQTT_SAFETY_TIMEOUT:3s}
+  payment:
+    sim-url: ${PAYMENT_SIM_URL:http://localhost:8091}
+    sim-api-token: ${PAYMENT_SIM_API_TOKEN:}
+    webhook-secret: ${PAYMENT_WEBHOOK_SECRET:}
+    webhook-url: ${PAYMENT_WEBHOOK_URL:http://localhost:8080/api/webhook/thanh-toan}
+logging:
+  pattern:
+    level: "%5p [traceId=%X{trace_id:-} spanId=%X{span_id:-}]"

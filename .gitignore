@@ -3,3 +3,6 @@ target/
 .idea/
 *.iml
 .superpowers/
+node_modules/
+dist/
+phase6-*.log

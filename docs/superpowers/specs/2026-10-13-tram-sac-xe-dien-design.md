@@ -93,7 +93,7 @@ Các quy tắc này lấp chỗ sơ đồ và đặc tả mâu thuẫn hoặc đ
 - Áp dụng cho: bắt đầu/dừng sạc (`LenhDieuKhien`), tạo đơn thanh toán (`DonThanhToan`), hoàn tiền (`HoanTien`). Client gửi header `Idempotency-Key` (UUID); lưu vào cột `KhoaIdempotency` UNIQUE đã có trong ERD.
 - Cách xử lý "ghi trước, kiểm tra sau": trong một giao dịch, `INSERT` bản ghi mang khóa; vi phạm UNIQUE thì đọc bản ghi cũ và trả kết quả cũ (header `Idempotent-Replay: true`), không chạy lại nghiệp vụ. Cùng khóa nhưng khác nội dung thì trả 409.
 - Tính phí một lần: `PhiSac` UNIQUE(MaPhien) và cờ `DaTinh`.
-- Callback trùng: UNIQUE(MaGiaoDich, SuKien) trong `CallbackLog`.
+- Callback trùng: chỉ mục UNIQUE từng phần `(MaGiaoDich, SuKien) WHERE KetQuaXuLy = 'Mới'` trong `CallbackLog` (chỉ một callback "Mới" cho mỗi cặp; callback trùng vẫn được ghi với `KetQuaXuLy = 'Trùng'`).
 - Phía thiết bị: mỗi lệnh MQTT mang `maLenh`; `device-sim` nhớ các `maLenh` đã xử lý, nhận lại thì gửi lại ack cũ, không thực thi lần hai.
 
 ## 6. Lệnh điều khiển và ack (UC10, UC12)

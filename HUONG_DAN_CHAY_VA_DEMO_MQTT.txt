@@ -1,0 +1,102 @@
+HUONG DAN CHAY PROJECT VA DEMO MQTT
+===================================
+
+1. YEU CAU
+- Docker Desktop dang chay.
+- PowerShell tren Windows.
+- Git clone project va mo terminal tai thu muc goc (co docker-compose.yml).
+
+2. CHUAN BI LAN DAU
+Neu chua co file .env:
+  Copy-Item .env.example .env
+
+Mo .env va dien cac gia tri DB_PASSWORD, JWT_SECRET, MQTT_PASSWORD,
+PAYMENT_SIM_API_TOKEN, PAYMENT_WEBHOOK_SECRET. JWT_SECRET va hai khoa thanh
+toan can dai it nhat 32 ky tu. MQTT_USER/MQTT_PASSWORD phai khop voi cau hinh
+broker; compose truyen cung gia tri cho app va device-sim.
+
+3. CHAY TOAN BO PROJECT (PROFILE DEV)
+Tai thu muc goc:
+  docker compose --profile dev up -d --build
+
+Kiem tra trang thai:
+  docker compose ps
+  curl.exe http://localhost:8080/actuator/health
+  Start-Process http://localhost:3000
+
+Xem log:
+  docker compose logs -f app
+  docker compose logs -f mosquitto device-sim
+
+Tat he thong:
+  docker compose down
+
+Xoa ca du lieu CSDL va MQTT (khong the khoi phuc sau khi xoa):
+  docker compose down -v
+
+4. DEMO MQTT: THEO DOI HEARTBEAT / TRANG THAI / ACK
+Mo mot PowerShell moi tai thu muc goc. Cac lenh duoi day doc username va
+password tu .env, khong can ghi mat khau truc tiep vao lenh.
+
+Nap bien moi truong tu .env vao PowerShell hien tai:
+  Get-Content .env | Where-Object { $_ -match '^[A-Za-z_][A-Za-z0-9_]*=' } | ForEach-Object { $name, $value = $_ -split '=', 2; Set-Item -Path "Env:$name" -Value $value }
+
+Theo doi heartbeat cua tat ca cong (gui moi 30 giay):
+  docker compose exec mosquitto mosquitto_sub -h localhost -p 1883 -u "$env:MQTT_USER" -P "$env:MQTT_PASSWORD" -t 'tramsac/cong/+/heartbeat' -v
+
+Theo doi trang thai cong:
+  docker compose exec mosquitto mosquitto_sub -h localhost -p 1883 -u "$env:MQTT_USER" -P "$env:MQTT_PASSWORD" -t 'tramsac/cong/+/trangthai' -v
+
+Theo doi ack lenh:
+  docker compose exec mosquitto mosquitto_sub -h localhost -p 1883 -u "$env:MQTT_USER" -P "$env:MQTT_PASSWORD" -t 'tramsac/cong/+/ack' -v
+
+Theo doi su co:
+  docker compose exec mosquitto mosquitto_sub -h localhost -p 1883 -u "$env:MQTT_USER" -P "$env:MQTT_PASSWORD" -t 'tramsac/cong/+/loi' -v
+
+Dung Ctrl+C de ket thuc lenh mosquitto_sub.
+
+5. DEMO THIET BI MO PHONG
+device-sim tu dang ky topic lenh va gui heartbeat cho cac cong C-AC-01,
+C-AC-02, C-DC-01, C-DC-02. API dieu khien simulator chi mo tren localhost:8090.
+
+Mo phong ro dien tai cong C-AC-01 (dong thoi phat MQTT vao topic /loi):
+  Invoke-RestMethod -Method Post 'http://localhost:8090/sim/devices/C-AC-01/fault?type=RO_DIEN'
+
+Mo terminal subscriber o muc 4 de quan sat ban tin /loi. Danh dau thiet bi an toan:
+  Invoke-RestMethod -Method Post 'http://localhost:8090/sim/devices/C-AC-01/safe'
+
+Mo phong xe roi cong:
+  Invoke-RestMethod -Method Post 'http://localhost:8090/sim/devices/C-AC-01/vehicle-left'
+
+Ngat ket noi / ket noi lai simulator:
+  Invoke-RestMethod -Method Post 'http://localhost:8090/sim/devices/C-AC-01/disconnect'
+  Invoke-RestMethod -Method Post 'http://localhost:8090/sim/devices/C-AC-01/reconnect'
+
+6. DEMO GUI LENH MQTT THU CONG (CHI DUNG DE QUAN SAT ACK)
+Mo subscriber theo doi ACK truoc. Sau do gui lenh hoi trang thai toi simulator:
+
+  $payload = '{"maLenh":"demo-trang-thai-001","loai":"HOI_TRANG_THAI"}'
+  $payload | docker compose exec -T mosquitto mosquitto_pub -h localhost -p 1883 -u "$env:MQTT_USER" -P "$env:MQTT_PASSWORD" -t 'tramsac/cong/C-AC-01/lenh' -q 1 -l
+
+Simulator se phat ACK tren topic tramsac/cong/C-AC-01/ack va trang thai tren
+tramsac/cong/C-AC-01/trangthai. Lenh BAT_DAU/DUNG cua nghiep vu nen duoc tao
+tu API/giao dien de backend quan ly phien va trang thai an toan dong bo.
+
+7. TOPIC MQTT
+tramsac/cong/{maCong}/lenh       Lenh tu backend toi thiet bi
+tramsac/cong/{maCong}/ack        Thiet bi xac nhan lenh
+tramsac/cong/{maCong}/trangthai  Trang thai sac va dien nang
+tramsac/cong/{maCong}/heartbeat  Tin hieu song dinh ky
+tramsac/cong/{maCong}/loi        Su co thiet bi
+
+MQTT broker duoc publish ra localhost:1883; app va simulator trong Docker
+ket noi toi mosquitto:1883. MQTT su dung xac thuc username/password trong .env.
+
+8. NEU KHONG KET NOI DUOC
+- Kiem tra Docker Desktop: docker compose ps
+- Xem log broker/simulator: docker compose logs --tail 100 mosquitto device-sim
+- Kiem tra MQTT_HOST_PORT trong .env; neu doi cong, thay -p 1883 trong cac
+  lenh docker compose exec bang cong noi bo cua broker van la 1883. Lenh exec
+  chay ben trong container nen luon dung cong 1883.
+- Neu doi MQTT_PASSWORD sau lan chay dau, compose cap nhat file password khi
+  khoi dong container; thu docker compose restart mosquitto device-sim app.
